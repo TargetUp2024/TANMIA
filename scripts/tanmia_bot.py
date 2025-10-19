@@ -5,16 +5,17 @@ from bs4 import BeautifulSoup as bs
 import os 
 import glob
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
-WEBHOOK_URL = "https://anasellll.app.n8n.cloud/webhook/cc3e67da-30b4-4805-a4fd-5c8439bd7b1e" ## Production
+WEBHOOK_URL = "https://targetup.app.n8n.cloud/webhook/cc3e67da-30b4-4805-a4fd-5c8439bd7b1e" ## Production
 base_url = "https://tanmia.ma/appels-doffres/"
 
 # --- Today's date in French format ---
 months_fr = ["janvier","février","mars","avril","mai","juin","juillet",
              "août","septembre","octobre","novembre","décembre"]
 
-today = datetime.now()
+#today = datetime.now()
+today = datetime.now() - timedelta(days=1)
 today_str = f"{today.day} {months_fr[today.month-1]} {today.year}"
 print(f"📅 Today is: {today_str}")
 
