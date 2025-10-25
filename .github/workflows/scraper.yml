@@ -3,7 +3,7 @@ name: Run Tanmia Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 1 * * *"  # Runs every day at 01:00 UTC
+    - cron: "0 4 * * *"  # Runs every day at 01:00 UTC
 
 jobs:
   run-bot:
