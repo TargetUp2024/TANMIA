@@ -1,4 +1,10 @@
-pandas==2.2.3
-requests==2.32.3
-beautifulsoup4==4.12.3
-lxml==5.3.0
+pandas
+requests
+pytesseract
+Pillow
+PyMuPDF
+python-docx
+bs4
+PyPDF2
+openpyxl
+lxml
