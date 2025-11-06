@@ -48,7 +48,9 @@ jobs:
       # Run scraper
       # ------------------------
       - name: Run Tanmia Scraper
-        run: python scripts/main.py
+        run: python main.py
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
 
       # ------------------------
       # Upload results as artifact
