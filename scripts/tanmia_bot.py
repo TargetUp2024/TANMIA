@@ -1,32 +1,166 @@
 import pandas as pd
 import requests
-import re
+import os
+import zipfile
+import io
+import tempfile
+import pytesseract
+from PIL import Image
+import fitz  # PyMuPDF
+from docx import Document
 from bs4 import BeautifulSoup as bs
-import os 
-import glob
-import time
+import PyPDF2
 from datetime import datetime, timedelta
+import re
+import unicodedata
 
-WEBHOOK_URL = "https://targetup.app.n8n.cloud/webhook/cc3e67da-30b4-4805-a4fd-5c8439bd7b1e" ## Production
-base_url = "https://tanmia.ma/appels-doffres/"
-
-# --- Today's date in French format ---
-months_fr = ["janvier","février","mars","avril","mai","juin","juillet",
+# --- CONFIG ---
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+OCR_LANGS = "ara+fra+eng"  # Arabic, French, English
+BASE_URL = "https://tanmia.ma/appels-doffres/"
+MONTHS_FR = ["janvier","février","mars","avril","mai","juin","juillet",
              "août","septembre","octobre","novembre","décembre"]
 
-#today = datetime.now()
-today = datetime.now() - timedelta(days=1)
-today_str = f"{today.day} {months_fr[today.month-1]} {today.year}"
-print(f"📅 Today is: {today_str}")
+# --- DATE CONFIG ---
+today = datetime.now() - timedelta(days=2)
+TARGET_DATE_STR = f"{today.day} {MONTHS_FR[today.month-1]} {today.year}"
+print(f"📅 Target date: {TARGET_DATE_STR}")
 
-# --- Store results ---
+# --- HELPER FUNCTIONS ---
+
+def clean_text(text):
+    """Clean and normalize extracted text."""
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKC", text)
+    text = re.sub(r'\n\s*\n+', '\n\n', text)
+    text = re.sub(r'[ \t]+', ' ', text)
+    return text.strip()
+
+def extract_text_with_ocr(file_bytes, filename=""):
+    """OCR using PyMuPDF and Tesseract."""
+    print(f"🔍 [OCR] Starting OCR on {os.path.basename(filename)} ...")
+    text = ""
+    try:
+        pdf_doc = fitz.open(stream=file_bytes, filetype="pdf")
+        for i, page in enumerate(pdf_doc):
+            print(f"🧠 [OCR] Processing page {i+1}/{len(pdf_doc)} ...")
+            pix = page.get_pixmap(dpi=300)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            page_text = pytesseract.image_to_string(img, lang=OCR_LANGS)
+            page_text = clean_text(page_text)
+            text += f"\n\n[OCR PAGE {i+1}/{len(pdf_doc)}]\n{page_text}"
+        print(f"✅ [OCR] Finished OCR ({len(text)} chars)")
+    except Exception as e:
+        text = f"[OCR failed: {e}]"
+        print(f"❌ [OCR] Error on {filename}: {e}")
+    return text
+
+def extract_text_from_pdf(file_bytes, filename=""):
+    """Extract text from PDF, fallback to OCR."""
+    print(f"📄 [PDF] Extracting from {os.path.basename(filename)} ...")
+    text = ""
+    try:
+        with io.BytesIO(file_bytes) as pdf_stream:
+            reader = PyPDF2.PdfReader(pdf_stream)
+            for i, page in enumerate(reader.pages):
+                page_text = page.extract_text() or ""
+                page_text = clean_text(page_text)
+                if page_text:
+                    text += f"\n\n[PDF PAGE {i+1}/{len(reader.pages)}]\n{page_text}"
+    except Exception as e:
+        print(f"❌ [PDF] Error: {e}")
+
+    if not text.strip():
+        print(f"⚠️ No text found, switching to OCR...")
+        text = extract_text_with_ocr(file_bytes, filename)
+    else:
+        print(f"✅ PDF text extraction complete ({len(text)} chars)")
+    return text
+
+def extract_text_from_docx(file_bytes, filename=""):
+    print(f"📝 [DOCX] Extracting from {os.path.basename(filename)} ...")
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+            tmp.write(file_bytes)
+            tmp.flush()
+            doc = Document(tmp.name)
+            text = "\n".join([clean_text(p.text) for p in doc.paragraphs if p.text.strip()])
+        print(f"✅ DOCX extracted ({len(text)} chars)")
+        return text
+    except Exception as e:
+        print(f"❌ DOCX error: {e}")
+        return ""
+
+def extract_text_from_xlsx(file_bytes, filename=""):
+    print(f"📊 [XLSX] Extracting from {os.path.basename(filename)} ...")
+    try:
+        with io.BytesIO(file_bytes) as f:
+            df = pd.read_excel(f)
+            text = clean_text(df.to_string(index=False))
+        print(f"✅ XLSX extracted ({len(text)} chars)")
+        return text
+    except Exception as e:
+        print(f"❌ XLSX error: {e}")
+        return ""
+
+def extract_text_from_csv(file_bytes, filename=""):
+    print(f"📈 [CSV] Extracting from {os.path.basename(filename)} ...")
+    try:
+        with io.BytesIO(file_bytes) as f:
+            df = pd.read_csv(f)
+            text = clean_text(df.to_string(index=False))
+        print(f"✅ CSV extracted ({len(text)} chars)")
+        return text
+    except Exception as e:
+        print(f"❌ CSV error: {e}")
+        return ""
+
+def extract_text_from_zip(file_bytes, filename=""):
+    print(f"📦 [ZIP] Extracting files from {os.path.basename(filename)} ...")
+    text = ""
+    try:
+        with io.BytesIO(file_bytes) as zf:
+            with zipfile.ZipFile(zf, "r") as zip_ref:
+                for name in zip_ref.namelist():
+                    if name.endswith(('.pdf','.docx','.doc','.csv','.xlsx','.txt')):
+                        print(f"   🔹 Found inside ZIP: {name}")
+                        with zip_ref.open(name) as f:
+                            inner_bytes = f.read()
+                            inner_text = extract_text_by_type(inner_bytes, name)
+                            text += f"\n\n===== From {name} =====\n{inner_text}\n"
+        print(f"✅ ZIP extraction complete")
+    except Exception as e:
+        print(f"❌ ZIP error: {e}")
+    return text
+
+def extract_text_by_type(file_bytes, filename):
+    filename = filename.lower()
+    if filename.endswith(".pdf"):
+        return extract_text_from_pdf(file_bytes, filename)
+    elif filename.endswith(".docx"):
+        return extract_text_from_docx(file_bytes, filename)
+    elif filename.endswith(".xlsx"):
+        return extract_text_from_xlsx(file_bytes, filename)
+    elif filename.endswith(".csv"):
+        return extract_text_from_csv(file_bytes, filename)
+    elif filename.endswith(".zip"):
+        return extract_text_from_zip(file_bytes, filename)
+    elif filename.endswith(".txt"):
+        text = clean_text(file_bytes.decode("utf-8", errors="ignore"))
+        print(f"📃 TXT extracted ({len(text)} chars)")
+        return text
+    else:
+        print(f"⚠️ Unsupported type: {filename}")
+        return ""
+
+# --- SCRAPER ---
 results = []
 
-# --- Loop through first 5 pages ---
 for page_num in range(1, 6):
-    page_url = f"{base_url}{page_num}/"
+    page_url = f"{BASE_URL}{page_num}/"
     print(f"\n🌍 Scraping page {page_num}: {page_url}")
-
+    
     resp = requests.get(page_url)
     if resp.status_code != 200:
         print("❌ Failed to load page.")
@@ -34,75 +168,120 @@ for page_num in range(1, 6):
 
     soup = bs(resp.text, "html.parser")
     articles = soup.find_all("article", class_="elementor-post")
-
     stop_scraping = False
 
     for article in articles:
-        # --- Get post date ---
         date_tag = article.find("span", class_="elementor-post-date")
         if not date_tag:
             continue
         post_date = date_tag.text.strip()
         print(f"📅 Found post date: {post_date}")
 
-        # --- Stop if the post is not today ---
-        if post_date != today_str:
-            print(f"🛑 Found post not from today ({post_date}). Stopping workflow.")
+        if post_date != TARGET_DATE_STR:
+            print(f"🛑 Post not from target date, stopping.")
             stop_scraping = True
             break
 
-        # --- Get article URL ---
         title_tag = article.find("h3", class_="elementor-post__title")
         if not title_tag or not title_tag.a:
             continue
         article_url = title_tag.a["href"]
-        print(f"🔗 Visiting article: {article_url}")
+        print(f"🔗 Visiting: {article_url}")
 
-        # --- Visit article page ---
         article_resp = requests.get(article_url)
         if article_resp.status_code != 200:
             continue
 
         article_soup = bs(article_resp.text, "html.parser")
-
-        # --- Extract title and attachments ---
         title = article_soup.find("h1").text.strip() if article_soup.find("h1") else "Untitled"
         attachments = [a["href"] for a in article_soup.select(".post-attachments a[href]")]
+        results.append({"Title": title, "URL": article_url, "Attachments": attachments})
 
-        results.append({
-            "Title": title,
-            "URL": article_url,
-            "Attachments": attachments
-        })
-
-    # --- Stop scraping if a post is not from today ---
     if stop_scraping:
         break
 
-# --- Create DataFrame ---
 df = pd.DataFrame(results)
 print("\n✅ Scraping complete!")
 
+# --- DOWNLOAD & EXTRACT WITH DETAILED STEPS ---
+extracted_texts = []
 
-# Loop through each row in the DataFrame
 for idx, row in df.iterrows():
-    payload = {
-        "title": row["Title"],
-        "url": row["URL"],
-        "attachments": row["Attachments"]
-    }
+    print(f"\n📄 Processing tender {idx+1}/{len(df)}: {row['Title']}")
+    combined_text = ""
 
-    print(f"\n🚀 Sending row {idx+1}/{len(df)} to n8n...")
+    for url in row["Attachments"]:
+        print(f"\n⬇️ Step 1: Downloading attachment: {url}")
+        try:
+            r = requests.get(url)
+            if r.status_code == 200:
+                file_bytes = r.content
+                print(f"✅ Step 2: Download complete ({len(file_bytes)} bytes)")
+
+                file_type = url.split('.')[-1].lower()
+                print(f"🔍 Step 3: Detected file type: {file_type}")
+
+                print(f"📝 Step 4: Extracting text ...")
+                text = extract_text_by_type(file_bytes, url)
+                print(f"✅ Step 4 complete ({len(text)} chars extracted)")
+
+                if not text.strip() and file_type == "pdf":
+                    print(f"⚠️ Step 5: Empty PDF, applying OCR fallback...")
+                    text = extract_text_with_ocr(file_bytes, url)
+                    print(f"✅ Step 5 complete (OCR extracted {len(text)} chars)")
+
+                print(f"🔧 Step 6: Cleaning text ...")
+                text = clean_text(text)
+                print(f"✅ Step 6 complete ({len(text)} chars after cleaning)")
+
+                combined_text += f"\n\n--- From {os.path.basename(url)} ---\n{text}\n"
+            else:
+                print(f"⚠️ Step 2: Failed to download ({r.status_code})")
+        except Exception as e:
+            print(f"❌ Step 2: Error downloading {url}: {e}")
+
+    print(f"🗂 Step 7: Appending extracted text to list")
+    extracted_texts.append(combined_text)
+    print(f"✅ Step 7 complete for tender {idx+1}")
+
+print("\n📌 Step 8: Adding extracted text as new column in DataFrame")
+df["Extracted_Text"] = extracted_texts
+
+print("\n✅ All done! DataFrame ready.")
+
+
+import requests
+import time
+
+# Replace with your actual n8n webhook URL
+WEBHOOK_URL = "https://targetup.app.n8n.cloud/webhook/ba3f4d51-60a5-4e3b-9d44-7f25e3428556"
+
+# Loop through DataFrame rows
+for idx, row in df.iterrows():
+    print(f"\n🚀 Sending row {idx+1}/{len(df)}: {row['Title']}")
+    
+    # Prepare payload
+    payload = {
+        "Title": row["Title"],
+        "URL": row["URL"],
+        "Attachments": row["Attachments"],
+        "Extracted_Text": row["Extracted_Text"]
+    }
     
     try:
-        response = requests.post(WEBHOOK_URL, json=payload)
+        # Send POST request to n8n webhook
+        response = requests.post(WEBHOOK_URL, json=payload, timeout=60)
         
+        # Wait for webhook response
         if response.status_code == 200:
-            print(f"✅ Row {idx+1} successfully sent and acknowledged by n8n.")
+            print(f"✅ Row {idx+1} sent successfully.")
         else:
-            print(f"❌ Row {idx+1} failed with status code: {response.status_code}")
-            print(response.text)
-            time.sleep(2)
-
+            print(f"⚠️ Row {idx+1} sent, but webhook returned status {response.status_code}")
+        
+        # Optional: small delay before next row
+        time.sleep(1)
+        
     except Exception as e:
         print(f"❌ Error sending row {idx+1}: {e}")
+
+print("\n✅ All rows sent!")
