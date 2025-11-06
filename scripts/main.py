@@ -254,8 +254,7 @@ import requests
 import time
 
 # Replace with your actual n8n webhook URL
-WEBHOOK_URL = "https://targetup.app.n8n.cloud/webhook/ba3f4d51-60a5-4e3b-9d44-7f25e3428556"
-
+WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
 # Loop through DataFrame rows
 for idx, row in df.iterrows():
     print(f"\n🚀 Sending row {idx+1}/{len(df)}: {row['Title']}")
