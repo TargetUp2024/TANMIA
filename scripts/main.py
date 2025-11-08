@@ -22,7 +22,7 @@ MONTHS_FR = ["janvier","février","mars","avril","mai","juin","juillet",
              "août","septembre","octobre","novembre","décembre"]
 
 # --- DATE CONFIG ---
-today = datetime.now() - timedelta(days=2)
+today = datetime.now() - timedelta(days=1)
 TARGET_DATE_STR = f"{today.day} {MONTHS_FR[today.month-1]} {today.year}"
 print(f"📅 Target date: {TARGET_DATE_STR}")
 
