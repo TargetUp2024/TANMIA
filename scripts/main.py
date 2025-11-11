@@ -202,6 +202,37 @@ for page_num in range(1, 6):
 
 df = pd.DataFrame(results)
 print("\n✅ Scraping complete!")
+excluded_words = [
+    # French / English equivalents
+    "construction", "construction",
+    "installation", "installation",
+    "recrutement", "recruitment",
+    "travaux", "works",
+    "fourniture", "supply",
+    "achat", "purchase",
+    "equipement", "equipment",
+    "maintenance", "maintenance",
+    "works", "works",
+    "goods", "goods",
+    "supply", "supply",
+    "acquisition", "acquisition",
+    "Recruitment", "recruitment",
+    "nettoyage", "cleaning",
+    "gardiennage", "guarding",
+    "archives", "archives",
+    "Equipment", "equipment",
+    "ÉQUIPEMENT", "equipment",
+    "équipement", "equipment",
+    "construire", "build",
+    "recrute", "recruits"
+]
+
+if not df.empty:
+    df_filtered = df[~df["Title"].str.lower().str.contains("|".join(excluded_words), na=False)].reset_index(drop=True)
+else:
+    df_filtered = df
+
+print(f"✅ Found {len(df_filtered)} relevant tenders after filtering.")
 
 # --- DOWNLOAD & EXTRACT WITH DETAILED STEPS ---
 extracted_texts = []
@@ -256,8 +287,8 @@ import time
 # Replace with your actual n8n webhook URL
 WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
 # Loop through DataFrame rows
-for idx, row in df.iterrows():
-    print(f"\n🚀 Sending row {idx+1}/{len(df)}: {row['Title']}")
+for idx, row in df_filtered.iterrows():
+    print(f"\n🚀 Sending row {idx+1}/{len(df_filtered)}: {row['Title']}")
     
     # Prepare payload
     payload = {
