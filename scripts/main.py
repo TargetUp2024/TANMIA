@@ -203,28 +203,8 @@ for page_num in range(1, 6):
 df = pd.DataFrame(results)
 print("\n✅ Scraping complete!")
 excluded_words = [
-    # French / English equivalents
-    "construction", "construction",
-    "installation", "installation",
-    "recrutement", "recruitment",
-    "travaux", "works",
-    "fourniture", "supply",
-    "achat", "purchase",
-    "equipement", "equipment",
-    "maintenance", "maintenance",
-    "works", "works",
-    "goods", "goods",
-    "supply", "supply",
-    "acquisition", "acquisition",
-    "Recruitment", "recruitment",
-    "nettoyage", "cleaning",
-    "gardiennage", "guarding",
-    "archives", "archives", "archivage",
-    "Equipment", "equipment",
-    "ÉQUIPEMENT", "equipment",
-    "équipement", "equipment",
-    "construire", "build",
-    "recrute", "recruits"
+    "construction", "installation", "travaux",
+    "fourniture", "achat", "equipement", "supply", "acquisition", "nettoyage"
 ]
 
 if not df.empty:
