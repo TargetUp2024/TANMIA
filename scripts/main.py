@@ -202,17 +202,11 @@ for page_num in range(1, 6):
 
 df = pd.DataFrame(results)
 print("\n✅ Scraping complete!")
+
 excluded_words = [
     "construction", "installation", "travaux",
     "fourniture", "achat", "equipement", "supply", "acquisition", "nettoyage"
 ]
-
-if not df.empty:
-    df_filtered = df[~df["Title"].str.lower().str.contains("|".join(excluded_words), na=False)].reset_index(drop=True)
-else:
-    df_filtered = df
-
-print(f"✅ Found {len(df_filtered)} relevant tenders after filtering.")
 
 # --- DOWNLOAD & EXTRACT WITH DETAILED STEPS ---
 extracted_texts = []
@@ -258,39 +252,37 @@ for idx, row in df.iterrows():
 print("\n📌 Step 8: Adding extracted text as new column in DataFrame")
 df["Extracted_Text"] = extracted_texts
 
+# ✅ FILTER AFTER ADDING 'Extracted_Text'
+if not df.empty:
+    df_filtered = df[~df["Title"].str.lower().str.contains("|".join(excluded_words), na=False)].reset_index(drop=True)
+else:
+    df_filtered = df
+
+print(f"✅ Found {len(df_filtered)} relevant tenders after filtering.")
 print("\n✅ All done! DataFrame ready.")
 
 
-import requests
 import time
 
-# Replace with your actual n8n webhook URL
 WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
-# Loop through DataFrame rows
+
 for idx, row in df_filtered.iterrows():
     print(f"\n🚀 Sending row {idx+1}/{len(df_filtered)}: {row['Title']}")
     
-    # Prepare payload
     payload = {
         "Title": row["Title"],
         "URL": row["URL"],
         "Attachments": row["Attachments"],
         "Extracted_Text": row["Extracted_Text"]
     }
-    
+
     try:
-        # Send POST request to n8n webhook
         response = requests.post(WEBHOOK_URL, json=payload, timeout=60)
-        
-        # Wait for webhook response
         if response.status_code == 200:
             print(f"✅ Row {idx+1} sent successfully.")
         else:
             print(f"⚠️ Row {idx+1} sent, but webhook returned status {response.status_code}")
-        
-        # Optional: small delay before next row
         time.sleep(1)
-        
     except Exception as e:
         print(f"❌ Error sending row {idx+1}: {e}")
 
